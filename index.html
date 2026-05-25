@@ -214,10 +214,7 @@ function SmoothieDaily() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState("");
   const [activeUser, setActiveUser] = useState("ian");
-  const [tab, setTab] = useState("home"); // home | garden | stats | benefit
-
-  // 기록 입력 폼 상태
-  const [selType, setSelType] = useState(null);
+  const [tab, setTab] = useState("home"); // home | garden | stats | benefit | reminder
 
   // ---- Firestore 실시간 구독 (부부 양쪽 기록이 실시간 반영) ----
   useEffect(() => {
@@ -245,9 +242,10 @@ function SmoothieDaily() {
 
   const today = todayStr();
   const user = USERS.find((u) => u.id === activeUser);
-  const todayRecord = records.find(
-    (r) => r.userId === activeUser && r.date === today
-  );
+  const typeOrder = SMOOTHIE_TYPES.map((t) => t.id);
+  const todayRecords = records
+    .filter((r) => r.userId === activeUser && r.date === today)
+    .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type));
 
   const streak = useMemo(
     () => calcStreak(records, activeUser),
@@ -262,36 +260,37 @@ function SmoothieDaily() {
     [records, activeUser]
   );
 
-  // ---- 기록 저장 (선택한 스무디의 레시피를 자동 저장 · Firestore) ----
-  const saveRecord = () => {
-    if (!selType || !db) return;
-    const info = SMOOTHIE_TYPES.find((t) => t.id === selType);
-    const docId = activeUser + "_" + today; // 하루 1잔 — 같은 날 다시 저장 시 덮어쓰기
-    db.collection("records")
-      .doc(docId)
-      .set({
-        userId: activeUser,
-        date: today,
-        type: selType,
-        tags: info ? info.recipe : [],
-        ts: Date.now(),
-      })
-      .catch((err) => {
-        console.error("저장 오류:", err);
-        setDbError("저장에 실패했어요. 인터넷 연결을 확인해 주세요.");
-      });
-    setSelType(null);
-  };
-
-  const undoToday = () => {
+  // ---- 스무디 기록 토글 (탭하면 기록, 다시 탭하면 취소 · Firestore) ----
+  const toggleSmoothie = (typeId) => {
     if (!db) return;
-    db.collection("records")
-      .doc(activeUser + "_" + today)
-      .delete()
-      .catch((err) => {
-        console.error("취소 오류:", err);
-        setDbError("취소에 실패했어요. 인터넷 연결을 확인해 주세요.");
-      });
+    const existing = records.find(
+      (r) =>
+        r.userId === activeUser && r.date === today && r.type === typeId
+    );
+    if (existing) {
+      db.collection("records")
+        .doc(existing.id)
+        .delete()
+        .catch((err) => {
+          console.error("취소 오류:", err);
+          setDbError("취소에 실패했어요. 인터넷 연결을 확인해 주세요.");
+        });
+    } else {
+      const info = SMOOTHIE_TYPES.find((t) => t.id === typeId);
+      db.collection("records")
+        .doc(activeUser + "_" + today + "_" + typeId)
+        .set({
+          userId: activeUser,
+          date: today,
+          type: typeId,
+          tags: info ? info.recipe : [],
+          ts: Date.now(),
+        })
+        .catch((err) => {
+          console.error("저장 오류:", err);
+          setDbError("저장에 실패했어요. 인터넷 연결을 확인해 주세요.");
+        });
+    }
   };
 
   // ====================================================================
@@ -353,11 +352,8 @@ function SmoothieDaily() {
               {dbError ? <div style={S.errorBar}>⚠️ {dbError}</div> : null}
               {tab === "home" && (
                 <HomeScreen
-                  todayRecord={todayRecord}
-                  selType={selType}
-                  setSelType={setSelType}
-                  saveRecord={saveRecord}
-                  undoToday={undoToday}
+                  todayRecords={todayRecords}
+                  toggleSmoothie={toggleSmoothie}
                 />
               )}
               {tab === "garden" && (
@@ -409,97 +405,88 @@ function SmoothieDaily() {
 // ========================================================================
 //  화면 A — 기록하기
 // ========================================================================
-function HomeScreen({ todayRecord, selType, setSelType, saveRecord, undoToday }) {
-  // 이미 오늘 기록이 있으면 완료 화면
-  if (todayRecord) {
-    const typeInfo = SMOOTHIE_TYPES.find((t) => t.id === todayRecord.type);
-    return (
-      <div>
-        <div style={S.doneCard}>
-          <div style={{ fontSize: 44 }}>🎉</div>
-          <div style={S.doneTitle}>오늘 기록 완료!</div>
-          <div style={S.doneSub}>
-            {typeInfo ? typeInfo.emoji : ""} {typeInfo ? typeInfo.label : ""} 스무디
-          </div>
-          {typeInfo && (
-            <div style={S.tagWrap}>
-              {typeInfo.recipe.map((t) => (
-                <span key={t} style={S.tagShow}>
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        {typeInfo && (
-          <div style={S.doneBenefitCard}>
-            <div style={S.doneBenefitHead}>🌿 오늘 스무디의 효능</div>
-            {typeInfo.recipe.map((ing) => {
-              const info = INGREDIENT_INFO.find((x) => x.name === ing);
-              if (!info) return null;
-              return (
-                <div key={ing} style={S.benefitRow}>
-                  <span style={S.benefitEmoji}>{info.emoji}</span>
-                  <span style={S.benefitName}>{info.name}</span>
-                  <span style={S.benefitText}>{info.benefit}</span>
-                </div>
-              );
-            })}
-            <div style={S.doneBenefitNote}>※ 일반 건강 상식 참고용</div>
-          </div>
-        )}
-        <button onClick={undoToday} style={S.undoBtn}>
-          기록 취소하고 다시 선택
-        </button>
-      </div>
-    );
-  }
-
-  // 입력 폼 — 스무디 선택만 (재료 태그 입력 없음)
-  const selInfo = selType
-    ? SMOOTHIE_TYPES.find((t) => t.id === selType)
-    : null;
+function HomeScreen({ todayRecords, toggleSmoothie }) {
+  const loggedTypes = todayRecords.map((r) => r.type);
+  const count = todayRecords.length;
+  const isLogged = (id) => loggedTypes.indexOf(id) !== -1;
 
   return (
     <div>
       <div style={S.bigCheck}>
-        <div style={S.checkQ}>오늘 스무디 마셨나요?</div>
-        <div style={{ fontSize: 13, color: "#6b5560", marginTop: 4 }}>
-          마신 스무디를 골라주세요
-        </div>
-      </div>
-
-      <div style={S.miniLabel}>어떤 스무디였나요?</div>
-      <div style={S.smoothieList}>
-        {SMOOTHIE_TYPES.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setSelType(t.id)}
-            style={Object.assign(
-              {},
-              S.smoothieCard,
-              selType === t.id ? S.smoothieCardOn : {}
-            )}
-          >
-            <div style={S.smoothieCardTop}>
-              <span style={{ fontSize: 22 }}>{t.emoji}</span>
-              <span style={S.smoothieCardName}>{t.label}</span>
-              <span style={S.smoothieCardTime}>{t.time}</span>
+        {count === 0 ? (
+          <React.Fragment>
+            <div style={S.checkQ}>오늘 스무디 마셨나요?</div>
+            <div style={{ fontSize: 13, color: "#6b5560", marginTop: 4 }}>
+              마신 스무디를 탭해서 기록하세요
             </div>
-            <div style={S.smoothieCardRecipe}>{t.recipe.join(" + ")}</div>
-          </button>
-        ))}
+          </React.Fragment>
+        ) : (
+          <React.Fragment>
+            <div style={S.checkQ}>오늘 {count}잔 마셨어요 🎉</div>
+            <div style={{ fontSize: 13, color: "#6b5560", marginTop: 4 }}>
+              더 마셨다면 탭해서 추가하세요
+            </div>
+          </React.Fragment>
+        )}
       </div>
 
-      <button
-        onClick={saveRecord}
-        disabled={!selType}
-        style={Object.assign({}, S.saveBtn, !selType ? S.saveBtnOff : {})}
-      >
-        {selInfo
-          ? "✓ " + selInfo.label + " 스무디 기록하기"
-          : "스무디를 골라주세요"}
-      </button>
+      <div style={S.miniLabel}>스무디를 탭하면 기록돼요</div>
+      <div style={S.smoothieList}>
+        {SMOOTHIE_TYPES.map((t) => {
+          const on = isLogged(t.id);
+          return (
+            <button
+              key={t.id}
+              onClick={() => toggleSmoothie(t.id)}
+              style={Object.assign(
+                {},
+                S.smoothieCard,
+                on ? S.smoothieCardLogged : {}
+              )}
+            >
+              <div style={S.smoothieCardTop}>
+                <span style={{ fontSize: 22 }}>{t.emoji}</span>
+                <span style={S.smoothieCardName}>{t.label}</span>
+                {on ? (
+                  <span style={S.loggedBadge}>✓ 기록됨</span>
+                ) : (
+                  <span style={S.smoothieCardTime}>{t.time}</span>
+                )}
+              </div>
+              <div style={S.smoothieCardRecipe}>{t.recipe.join(" + ")}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {count > 0 && (
+        <div style={S.doneBenefitCard}>
+          <div style={S.doneBenefitHead}>🌿 오늘 마신 스무디의 효능</div>
+          {todayRecords.map((rec) => {
+            const sm = SMOOTHIE_TYPES.find((t) => t.id === rec.type);
+            if (!sm) return null;
+            return (
+              <div key={rec.id} style={{ marginBottom: 8 }}>
+                <div style={S.benefitSmoothieLabel}>
+                  {sm.emoji} {sm.label}
+                </div>
+                {sm.recipe.map((ing) => {
+                  const info = INGREDIENT_INFO.find((x) => x.name === ing);
+                  if (!info) return null;
+                  return (
+                    <div key={ing} style={S.benefitRow}>
+                      <span style={S.benefitEmoji}>{info.emoji}</span>
+                      <span style={S.benefitName}>{info.name}</span>
+                      <span style={S.benefitText}>{info.benefit}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          <div style={S.doneBenefitNote}>※ 일반 건강 상식 참고용</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -563,7 +550,7 @@ function StatsScreen({ weekly, records }) {
           <div key={u.id} style={S.partnerRow}>
             <span style={{ fontSize: 20 }}>{u.avatar}</span>
             <span style={S.partnerName}>{u.name}</span>
-            <span style={S.partnerStat}>총 {cnt}회</span>
+            <span style={S.partnerStat}>총 {cnt}잔</span>
             <span style={S.partnerStreak}>🔥 {s}일</span>
           </div>
         );
@@ -831,6 +818,19 @@ const S = {
     borderColor: "#c0306b",
     borderWidth: 2,
   },
+  smoothieCardLogged: {
+    background: "#e9f4ea",
+    borderColor: "#3f7d4e",
+    borderWidth: 2,
+  },
+  loggedBadge: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#fff",
+    background: "#3f7d4e",
+    borderRadius: 10,
+    padding: "3px 9px",
+  },
   smoothieCardTop: {
     display: "flex",
     alignItems: "center",
@@ -911,6 +911,12 @@ const S = {
     fontWeight: 800,
     color: "#c0306b",
     marginBottom: 4,
+  },
+  benefitSmoothieLabel: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: "#7a1340",
+    margin: "8px 0 2px",
   },
   doneBenefitNote: {
     fontSize: 10,
