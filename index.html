@@ -299,6 +299,8 @@ function SmoothieDaily() {
       <div style={S.phone}>
         {/* ---- 헤더 ---- */}
         <div style={S.header}>
+          <img src="header.png" alt="과일시장" style={S.headerImg} />
+          <div style={S.headerText}>
           <div style={S.hello}>
             {tab === "home"
               ? "좋은 아침이에요"
@@ -337,6 +339,7 @@ function SmoothieDaily() {
                 {u.avatar} {u.name}
               </button>
             ))}
+          </div>
           </div>
         </div>
 
@@ -723,9 +726,16 @@ const S = {
     boxShadow: "0 24px 56px rgba(29,19,32,.42)",
   },
   header: {
-    background: "linear-gradient(135deg,#c0306b,#f5a623)",
     borderRadius: "32px 32px 0 0",
-    padding: "22px 20px 16px",
+    overflow: "hidden",
+  },
+  headerImg: {
+    width: "100%",
+    display: "block",
+  },
+  headerText: {
+    background: "linear-gradient(135deg,#c0306b,#f5a623)",
+    padding: "14px 20px 16px",
     color: "#fff",
   },
   hello: { fontSize: 12, opacity: 0.9 },
