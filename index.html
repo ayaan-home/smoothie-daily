@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#c0306b">
+<title>스무디 데일리 🥤</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  html,body{margin:0;padding:0;background:#fdf6ec;}
+  #root{min-height:100vh;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useMemo } = React;
+
+
+
+/* ========================================================================
+   스무디 데일리 — 웹앱 프로토타입
+   부부 2명용 스무디 섭취 습관 트래커 (모바일 우선)
+   ※ 프로토타입: 데이터는 메모리에만 저장됩니다 (새로고침 시 초기화)
+   ======================================================================== */
+
+// ---- 상수 데이터 ------------------------------------------------------------
+const USERS = [
+  { id: "minji", name: "민지", avatar: "👩" },
+  { id: "junho", name: "준호", avatar: "👨" },
+];
+
+const SMOOTHIE_TYPES = [
+  {
+    id: "morningA",
+    label: "아침 A",
+    emoji: "☀️",
+    time: "아침 권장",
+    recipe: ["당근", "비트", "연근", "우엉", "요거트"],
+  },
+  {
+    id: "morningB",
+    label: "아침 B",
+    emoji: "🥤",
+    time: "아침 권장",
+    recipe: ["사과", "양배추", "레몬", "생강", "요거트"],
+  },
+  {
+    id: "dawn",
+    label: "저녁 A",
+    emoji: "🌙",
+    time: "저녁 권장",
+    recipe: ["인삼", "더덕", "마", "우유", "꿀", "배", "파인애플"],
+  },
+  {
+    id: "evening",
+    label: "저녁 B",
+    emoji: "🌆",
+    time: "저녁 권장",
+    recipe: ["검은콩", "검은깨", "치아시드", "아마씨드", "두유"],
+  },
+];
+
+// 재료별 1줄 효능 사전 (일반적 건강 상식 · 참고용)
+const INGREDIENT_INFO = [
+  { name: "인삼", emoji: "🌿", benefit: "면역력 강화 · 피로 회복" },
+  { name: "더덕", emoji: "🌱", benefit: "기관지 · 호흡기 건강" },
+  { name: "마", emoji: "🍠", benefit: "소화 촉진 · 위 보호" },
+  { name: "우유", emoji: "🥛", benefit: "칼슘 · 단백질 보충" },
+  { name: "꿀", emoji: "🍯", benefit: "천연 당분 · 항균 작용" },
+  { name: "배", emoji: "🍐", benefit: "기침 완화 · 수분 보충" },
+  { name: "당근", emoji: "🥕", benefit: "베타카로틴 · 눈 건강" },
+  { name: "비트", emoji: "🟣", benefit: "혈액 순환 · 항산화" },
+  { name: "연근", emoji: "⚪", benefit: "지혈 · 피부 건강" },
+  { name: "우엉", emoji: "🟤", benefit: "식이섬유 · 장 건강" },
+  { name: "사과", emoji: "🍎", benefit: "식이섬유 · 콜레스테롤 관리" },
+  { name: "양배추", emoji: "🥬", benefit: "위 점막 보호 · 비타민U" },
+  { name: "레몬", emoji: "🍋", benefit: "비타민C · 피로 회복" },
+  { name: "생강", emoji: "🫚", benefit: "혈액 순환 · 몸 따뜻하게" },
+  { name: "검은콩", emoji: "🫘", benefit: "단백질 · 안토시아닌" },
+  { name: "검은깨", emoji: "⚫", benefit: "불포화지방 · 모발 건강" },
+  { name: "치아시드", emoji: "◾", benefit: "오메가3 · 포만감" },
+  { name: "아마씨드", emoji: "🟫", benefit: "오메가3 · 식이섬유" },
+  { name: "두유", emoji: "🥛", benefit: "식물성 단백질 · 이소플라본" },
+  { name: "요거트", emoji: "🍦", benefit: "유산균 · 장 건강" },
+  { name: "파인애플", emoji: "🍍", benefit: "소화 효소 · 비타민C" },
+];
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const dateStr = (d) => d.toISOString().slice(0, 10);
+
+// 시작용 더미 기록 (지난 며칠치) — 프로토타입 체험용
+function seedRecords() {
+  const recs = [];
+  const mk = (uid, daysAgo, type, tags) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    recs.push({ id: `${uid}-${daysAgo}`, userId: uid, date: dateStr(d), type, tags });
+  };
+  // 민지: 최근 4일 연속
+  mk("minji", 1, "dawn", ["인삼", "더덕", "마", "우유", "꿀", "배"]);
+  mk("minji", 2, "morningA", ["당근", "비트", "연근", "우엉", "요거트"]);
+  mk("minji", 3, "evening", ["검은콩", "검은깨", "치아시드", "두유"]);
+  mk("minji", 5, "morningB", ["사과", "양배추", "레몬", "생강", "요거트"]);
+  // 준호: 최근 2일 연속
+  mk("junho", 1, "evening", ["검은콩", "아마씨드", "두유"]);
+  mk("junho", 2, "dawn", ["인삼", "마", "우유", "배"]);
+  mk("junho", 4, "morningA", ["당근", "비트", "연근", "우엉", "요거트"]);
+  return recs;
+}
+
+// ---- 스트릭 계산 -------------------------------------------------------------
+function calcStreak(records, userId) {
+  const dates = new Set(
+    records.filter((r) => r.userId === userId).map((r) => r.date)
+  );
+  let streak = 0;
+  const cur = new Date();
+  // 오늘 기록이 없으면 어제부터 카운트 (오늘은 아직 안 마셨을 수 있음)
+  if (!dates.has(dateStr(cur))) cur.setDate(cur.getDate() - 1);
+  while (dates.has(dateStr(cur))) {
+    streak++;
+    cur.setDate(cur.getDate() - 1);
+  }
+  return streak;
+}
+
+// ---- 주간 달성률 (최근 4주) --------------------------------------------------
+function calcWeekly(records, userId) {
+  const dates = new Set(
+    records.filter((r) => r.userId === userId).map((r) => r.date)
+  );
+  const weeks = [];
+  for (let w = 0; w < 4; w++) {
+    let hit = 0;
+    for (let d = 0; d < 7; d++) {
+      const day = new Date();
+      day.setDate(day.getDate() - (w * 7 + d));
+      if (dates.has(dateStr(day))) hit++;
+    }
+    weeks.push(Math.round((hit / 7) * 100));
+  }
+  return weeks.reverse(); // 오래된 주 → 최근 주
+}
+
+// ---- 잔디밭 (최근 35일) ------------------------------------------------------
+function calcGrass(records, userId) {
+  const dates = new Set(
+    records.filter((r) => r.userId === userId).map((r) => r.date)
+  );
+  const cells = [];
+  for (let i = 34; i >= 0; i--) {
+    const day = new Date();
+    day.setDate(day.getDate() - i);
+    cells.push({ date: dateStr(day), filled: dates.has(dateStr(day)) });
+  }
+  return cells;
+}
+
+// ========================================================================
+//  메인 컴포넌트
+// ========================================================================
+function SmoothieDaily() {
+  const [records, setRecords] = useState(seedRecords);
+  const [activeUser, setActiveUser] = useState("minji");
+  const [tab, setTab] = useState("home"); // home | garden | stats
+
+  // 기록 입력 폼 상태
+  const [selType, setSelType] = useState(null);
+
+  const today = todayStr();
+  const user = USERS.find((u) => u.id === activeUser);
+  const todayRecord = records.find(
+    (r) => r.userId === activeUser && r.date === today
+  );
+
+  const streak = useMemo(
+    () => calcStreak(records, activeUser),
+    [records, activeUser]
+  );
+  const weekly = useMemo(
+    () => calcWeekly(records, activeUser),
+    [records, activeUser]
+  );
+  const grass = useMemo(
+    () => calcGrass(records, activeUser),
+    [records, activeUser]
+  );
+
+  // ---- 기록 저장 (선택한 스무디의 레시피를 자동 저장) ----
+  const saveRecord = () => {
+    if (!selType) return;
+    const info = SMOOTHIE_TYPES.find((t) => t.id === selType);
+    const newRec = {
+      id: `${activeUser}-${today}-${Date.now()}`,
+      userId: activeUser,
+      date: today,
+      type: selType,
+      tags: info ? info.recipe : [],
+    };
+    setRecords((prev) => [
+      ...prev.filter((r) => !(r.userId === activeUser && r.date === today)),
+      newRec,
+    ]);
+    setSelType(null);
+  };
+
+  const undoToday = () => {
+    setRecords((prev) =>
+      prev.filter((r) => !(r.userId === activeUser && r.date === today))
+    );
+  };
+
+  // ====================================================================
+  return (
+    <div style={S.app}>
+      <div style={S.phone}>
+        {/* ---- 헤더 ---- */}
+        <div style={S.header}>
+          <div style={S.hello}>
+            {tab === "home"
+              ? "좋은 아침이에요"
+              : tab === "garden"
+              ? `${user.name}님의 기록`
+              : tab === "stats"
+              ? "우리 부부의"
+              : "스무디 재료별"}
+          </div>
+          <div style={S.title}>
+            {tab === "home"
+              ? "오늘의 스무디 🥤"
+              : tab === "garden"
+              ? "나의 잔디밭 🌱"
+              : tab === "stats"
+              ? "주간 통계 📊"
+              : "효능 사전 📖"}
+          </div>
+
+          {/* 사용자 전환 */}
+          <div style={S.userSwitch}>
+            {USERS.map((u) => (
+              <button
+                key={u.id}
+                onClick={() => setActiveUser(u.id)}
+                style={{
+                  ...S.userChip,
+                  ...(u.id === activeUser ? S.userChipOn : {}),
+                }}
+              >
+                {u.avatar} {u.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ---- 본문 ---- */}
+        <div style={S.body}>
+          {tab === "home" && (
+            <HomeScreen
+              todayRecord={todayRecord}
+              selType={selType}
+              setSelType={setSelType}
+              saveRecord={saveRecord}
+              undoToday={undoToday}
+            />
+          )}
+          {tab === "garden" && <GardenScreen streak={streak} grass={grass} />}
+          {tab === "stats" && (
+            <StatsScreen weekly={weekly} records={records} />
+          )}
+          {tab === "benefit" && <BenefitScreen />}
+        </div>
+
+        {/* ---- 하단 탭 ---- */}
+        <div style={S.tabBar}>
+          {[
+            { id: "home", icon: "✓", label: "기록" },
+            { id: "garden", icon: "🌱", label: "잔디밭" },
+            { id: "stats", icon: "📊", label: "통계" },
+            { id: "benefit", icon: "📖", label: "효능" },
+          ].map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              style={{
+                ...S.tabBtn,
+                ...(tab === t.id ? S.tabBtnOn : {}),
+              }}
+            >
+              <div style={{ fontSize: 20 }}>{t.icon}</div>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>{t.label}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <p style={S.note}>
+        🥤 스무디 데일리 · 프로토타입 — 데이터는 메모리에만 저장됩니다
+        (새로고침 시 초기화)
+      </p>
+    </div>
+  );
+}
+
+// ========================================================================
+//  화면 A — 기록하기
+// ========================================================================
+function HomeScreen({
+  todayRecord,
+  selType,
+  setSelType,
+  saveRecord,
+  undoToday,
+}) {
+  // 이미 오늘 기록이 있으면 완료 화면
+  if (todayRecord) {
+    const typeInfo = SMOOTHIE_TYPES.find((t) => t.id === todayRecord.type);
+    return (
+      <div>
+        <div style={S.doneCard}>
+          <div style={{ fontSize: 44 }}>🎉</div>
+          <div style={S.doneTitle}>오늘 기록 완료!</div>
+          <div style={S.doneSub}>
+            {typeInfo?.emoji} {typeInfo?.label} 스무디
+          </div>
+          {typeInfo && (
+            <div style={S.tagWrap}>
+              {typeInfo.recipe.map((t) => (
+                <span key={t} style={S.tagShow}>
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <button onClick={undoToday} style={S.undoBtn}>
+          기록 취소하고 다시 선택
+        </button>
+      </div>
+    );
+  }
+
+  // 입력 폼 — 스무디 선택만 (재료 태그 입력 없음)
+  const selInfo = selType
+    ? SMOOTHIE_TYPES.find((t) => t.id === selType)
+    : null;
+
+  return (
+    <div>
+      <div style={S.bigCheck}>
+        <div style={S.checkQ}>오늘 스무디 마셨나요?</div>
+        <div style={{ fontSize: 13, color: "#6b5560", marginTop: 4 }}>
+          마신 스무디를 골라주세요
+        </div>
+      </div>
+
+      <div style={S.miniLabel}>어떤 스무디였나요?</div>
+      <div style={S.smoothieList}>
+        {SMOOTHIE_TYPES.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setSelType(t.id)}
+            style={{
+              ...S.smoothieCard,
+              ...(selType === t.id ? S.smoothieCardOn : {}),
+            }}
+          >
+            <div style={S.smoothieCardTop}>
+              <span style={{ fontSize: 22 }}>{t.emoji}</span>
+              <span style={S.smoothieCardName}>{t.label}</span>
+              <span style={S.smoothieCardTime}>{t.time}</span>
+            </div>
+            <div style={S.smoothieCardRecipe}>{t.recipe.join(" + ")}</div>
+          </button>
+        ))}
+      </div>
+
+      <button
+        onClick={saveRecord}
+        disabled={!selType}
+        style={{
+          ...S.saveBtn,
+          ...(!selType ? S.saveBtnOff : {}),
+        }}
+      >
+        {selInfo
+          ? `✓ ${selInfo.label} 스무디 기록하기`
+          : "스무디를 골라주세요"}
+      </button>
+    </div>
+  );
+}
+
+// ========================================================================
+//  화면 B — 잔디밭
+// ========================================================================
+function GardenScreen({ streak, grass }) {
+  return (
+    <div>
+      <div style={S.streakBox}>
+        <div style={{ fontSize: 32 }}>🔥</div>
+        <div style={S.streakNum}>{streak}일</div>
+        <div style={S.streakLbl}>연속 기록 중 (스트릭)</div>
+      </div>
+
+      <div style={S.miniLabel}>최근 5주</div>
+      <div style={S.grassGrid}>
+        {grass.map((c) => (
+          <div
+            key={c.date}
+            title={c.date}
+            style={{
+              ...S.cell,
+              background: c.filled ? "#3f7d4e" : "#f0e3d0",
+            }}
+          />
+        ))}
+      </div>
+      <div style={S.legend}>
+        <span style={{ ...S.cell, ...S.legendCell, background: "#f0e3d0" }} />
+        <span style={{ fontSize: 11, color: "#6b5560" }}>안 마심</span>
+        <span
+          style={{ ...S.cell, ...S.legendCell, background: "#3f7d4e" }}
+        />
+        <span style={{ fontSize: 11, color: "#6b5560" }}>마심</span>
+      </div>
+    </div>
+  );
+}
+
+// ========================================================================
+//  화면 C — 통계 & 가족
+// ========================================================================
+function StatsScreen({ weekly, records }) {
+  return (
+    <div>
+      <div style={S.miniLabel}>주별 달성률 (최근 4주)</div>
+      {weekly.map((pct, i) => (
+        <div key={i} style={S.barRow}>
+          <span style={S.barWk}>{i + 1}주</span>
+          <div style={S.barTrack}>
+            <div style={{ ...S.barFill, width: `${pct}%` }} />
+          </div>
+          <span style={S.barPct}>{pct}%</span>
+        </div>
+      ))}
+
+      <div style={S.miniLabel}>가족 기록</div>
+      {USERS.map((u) => {
+        const s = calcStreak(records, u.id);
+        const cnt = records.filter((r) => r.userId === u.id).length;
+        return (
+          <div key={u.id} style={S.partnerRow}>
+            <span style={{ fontSize: 20 }}>{u.avatar}</span>
+            <span style={S.partnerName}>{u.name}</span>
+            <span style={S.partnerStat}>총 {cnt}회</span>
+            <span style={S.partnerStreak}>🔥 {s}일</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ========================================================================
+//  화면 D — 효능 사전
+// ========================================================================
+function BenefitScreen() {
+  return (
+    <div>
+      <div style={S.benefitIntro}>
+        🥤 우리집 스무디에 들어가는 재료들의 효능을 정리했어요
+      </div>
+      {SMOOTHIE_TYPES.map((sm) => (
+        <div key={sm.id} style={{ marginBottom: 14 }}>
+          <div style={S.benefitGroupHead}>
+            {sm.emoji} {sm.label} 스무디
+          </div>
+          {sm.recipe.map((ing) => {
+            const info = INGREDIENT_INFO.find((x) => x.name === ing);
+            if (!info) return null;
+            return (
+              <div key={ing} style={S.benefitRow}>
+                <span style={S.benefitEmoji}>{info.emoji}</span>
+                <span style={S.benefitName}>{info.name}</span>
+                <span style={S.benefitText}>{info.benefit}</span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      <div style={S.benefitNote}>
+        ※ 일반적으로 알려진 건강 상식이며, 의학적 진단·치료 효과를 보장하지
+        않습니다.
+      </div>
+    </div>
+  );
+}
+const S = {
+  app: {
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "30px 16px",
+    background:
+      "radial-gradient(circle at 15% 10%, rgba(245,166,35,.18), transparent 40%)," +
+      "radial-gradient(circle at 85% 8%, rgba(192,48,107,.16), transparent 42%)," +
+      "#fdf6ec",
+    fontFamily:
+      "'IBM Plex Sans KR','Apple SD Gothic Neo',sans-serif",
+  },
+  phone: {
+    width: 340,
+    background: "#1d1320",
+    borderRadius: 42,
+    padding: 12,
+    boxShadow: "0 24px 56px rgba(29,19,32,.42)",
+  },
+  header: {
+    background: "linear-gradient(135deg,#c0306b,#f5a623)",
+    borderRadius: "32px 32px 0 0",
+    padding: "22px 20px 16px",
+    color: "#fff",
+  },
+  hello: { fontSize: 12, opacity: 0.9 },
+  title: { fontSize: 23, fontWeight: 800, marginTop: 2 },
+  userSwitch: { display: "flex", gap: 8, marginTop: 14 },
+  userChip: {
+    flex: 1,
+    border: "none",
+    borderRadius: 20,
+    padding: "7px 0",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+    background: "rgba(255,255,255,.25)",
+    color: "#fff",
+  },
+  userChipOn: { background: "#fff", color: "#c0306b" },
+  body: {
+    background: "#fdf6ec",
+    padding: 18,
+    minHeight: 420,
+  },
+  tabBar: {
+    display: "flex",
+    background: "#fffdf9",
+    borderRadius: "0 0 32px 32px",
+    padding: "8px 6px 14px",
+    borderTop: "1px solid #f0e3d0",
+  },
+  tabBtn: {
+    flex: 1,
+    border: "none",
+    background: "none",
+    cursor: "pointer",
+    color: "#b0a09a",
+    padding: "6px 0",
+  },
+  tabBtnOn: { color: "#c0306b" },
+
+  // 기록 화면
+  bigCheck: {
+    background: "#fffdf9",
+    border: "2px solid #dff0e0",
+    borderRadius: 18,
+    padding: 16,
+    textAlign: "center",
+  },
+  checkQ: { fontSize: 15, fontWeight: 800, color: "#7a1340" },
+  miniLabel: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: "#6b5560",
+    margin: "16px 0 8px",
+  },
+  // 스무디 선택 리스트 (재료 이름 함께 표시)
+  smoothieList: { display: "flex", flexDirection: "column", gap: 8 },
+  smoothieCard: {
+    border: "1.5px solid #f0e3d0",
+    background: "#fffdf9",
+    borderRadius: 14,
+    padding: "11px 13px",
+    cursor: "pointer",
+    textAlign: "left",
+    display: "block",
+    width: "100%",
+  },
+  smoothieCardOn: {
+    background: "#fff3da",
+    borderColor: "#c0306b",
+    borderWidth: 2,
+  },
+  smoothieCardTop: {
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 4,
+  },
+  smoothieCardName: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#7a1340",
+    flex: 1,
+  },
+  smoothieCardTime: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#fff",
+    background: "#f5a623",
+    borderRadius: 10,
+    padding: "3px 8px",
+  },
+  smoothieCardRecipe: {
+    fontSize: 12,
+    color: "#6b5560",
+    lineHeight: 1.5,
+  },
+  tagWrap: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 6,
+    justifyContent: "center",
+    marginTop: 10,
+  },
+  tagShow: {
+    background: "#f0e3d0",
+    borderRadius: 20,
+    padding: "5px 11px",
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#3a2230",
+  },
+  saveBtn: {
+    width: "100%",
+    marginTop: 18,
+    border: "none",
+    borderRadius: 16,
+    padding: "14px 0",
+    fontSize: 16,
+    fontWeight: 800,
+    color: "#fff",
+    background: "#3f7d4e",
+    cursor: "pointer",
+  },
+  saveBtnOff: { background: "#cbb9b0", cursor: "not-allowed" },
+
+  // 완료 화면
+  doneCard: {
+    background: "linear-gradient(135deg,#fff3da,#ffe1ec)",
+    borderRadius: 20,
+    padding: "26px 18px",
+    textAlign: "center",
+  },
+  doneTitle: {
+    fontSize: 20,
+    fontWeight: 800,
+    color: "#7a1340",
+    marginTop: 6,
+  },
+  doneSub: { fontSize: 15, color: "#6b5560", margin: "6px 0 12px" },
+  undoBtn: {
+    width: "100%",
+    marginTop: 14,
+    border: "1px solid #f0e3d0",
+    background: "#fffdf9",
+    borderRadius: 14,
+    padding: "11px 0",
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#6b5560",
+    cursor: "pointer",
+  },
+
+  // 잔디밭
+  streakBox: {
+    background: "linear-gradient(135deg,#fff3da,#ffe1ec)",
+    borderRadius: 18,
+    padding: 18,
+    textAlign: "center",
+  },
+  streakNum: { fontSize: 32, fontWeight: 800, color: "#c0306b" },
+  streakLbl: { fontSize: 12, color: "#6b5560" },
+  grassGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(7,1fr)",
+    gap: 6,
+  },
+  cell: { aspectRatio: "1", borderRadius: 5 },
+  legend: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+  },
+  legendCell: { width: 14, height: 14, aspectRatio: "auto" },
+
+  // 통계
+  barRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  barWk: { fontSize: 12, width: 34, color: "#6b5560", fontWeight: 700 },
+  barTrack: {
+    flex: 1,
+    background: "#f0e3d0",
+    borderRadius: 8,
+    height: 18,
+    overflow: "hidden",
+  },
+  barFill: {
+    height: "100%",
+    background: "linear-gradient(90deg,#f5a623,#c0306b)",
+    borderRadius: 8,
+  },
+  barPct: {
+    fontSize: 12,
+    width: 38,
+    textAlign: "right",
+    fontWeight: 800,
+    color: "#c0306b",
+  },
+  partnerRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: "#fffdf9",
+    border: "1px solid #f0e3d0",
+    borderRadius: 12,
+    padding: "10px 12px",
+    marginTop: 8,
+  },
+  partnerName: { fontSize: 13, fontWeight: 800, flex: 1 },
+  partnerStat: { fontSize: 11, color: "#6b5560", fontWeight: 600 },
+  partnerStreak: { fontSize: 12, color: "#3f7d4e", fontWeight: 800 },
+
+  // 효능 사전 화면
+  benefitIntro: {
+    fontSize: 12,
+    color: "#6b5560",
+    background: "#fff3da",
+    borderRadius: 12,
+    padding: "10px 12px",
+    marginBottom: 14,
+    textAlign: "center",
+    fontWeight: 600,
+  },
+  benefitGroupHead: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: "#c0306b",
+    padding: "6px 0",
+    borderBottom: "2px solid #f0e3d0",
+    marginBottom: 6,
+  },
+  benefitRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "7px 4px",
+    borderBottom: "1px dashed #f0e3d0",
+  },
+  benefitEmoji: { fontSize: 17, width: 22, textAlign: "center" },
+  benefitName: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#3a2230",
+    width: 62,
+  },
+  benefitText: { fontSize: 12, color: "#6b5560", flex: 1 },
+  benefitNote: {
+    fontSize: 10,
+    color: "#b0a09a",
+    marginTop: 10,
+    lineHeight: 1.5,
+  },
+
+  note: {
+    marginTop: 20,
+    fontSize: 12,
+    color: "#6b5560",
+    textAlign: "center",
+    maxWidth: 340,
+  },
+};
+
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<SmoothieDaily />);
+</script>
+</body>
+</html>
