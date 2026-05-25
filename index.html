@@ -70,8 +70,8 @@ try {
 
 // ---- 상수 데이터 ------------------------------------------------------------
 const USERS = [
-  { id: "minji", name: "민지", avatar: "👩" },
-  { id: "junho", name: "준호", avatar: "👨" },
+  { id: "ian", name: "이안", avatar: "👨" },
+  { id: "genie", name: "지니", avatar: "👩" },
 ];
 
 const SMOOTHIE_TYPES = [
@@ -195,7 +195,7 @@ function SmoothieDaily() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState("");
-  const [activeUser, setActiveUser] = useState("minji");
+  const [activeUser, setActiveUser] = useState("ian");
   const [tab, setTab] = useState("home"); // home | garden | stats | benefit
 
   // 기록 입력 폼 상태
