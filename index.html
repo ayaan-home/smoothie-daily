@@ -140,6 +140,24 @@ function localDate(d) {
 const todayStr = () => localDate(new Date());
 const dateStr = (d) => localDate(d);
 
+// ---- 구글 캘린더 '매일 반복' 일정 추가 링크 생성 ----
+function calendarUrl(title, hour, details) {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const base = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+  const start = base + "T" + pad(hour) + "0000";
+  const end = base + "T" + pad(hour) + "1500";
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: title,
+    dates: start + "/" + end,
+    recur: "RRULE:FREQ=DAILY",
+    details: details,
+    ctz: "Asia/Seoul",
+  });
+  return "https://calendar.google.com/calendar/render?" + params.toString();
+}
+
 // ---- 스트릭 계산 -------------------------------------------------------------
 function calcStreak(records, userId) {
   const dates = new Set(
@@ -289,7 +307,9 @@ function SmoothieDaily() {
               ? user.name + "님의 기록"
               : tab === "stats"
               ? "우리 부부의"
-              : "스무디 재료별"}
+              : tab === "benefit"
+              ? "스무디 재료별"
+              : "잊지 않도록"}
           </div>
           <div style={S.title}>
             {tab === "home"
@@ -298,7 +318,9 @@ function SmoothieDaily() {
               ? "나의 잔디밭 🌱"
               : tab === "stats"
               ? "주간 통계 📊"
-              : "효능 사전 📖"}
+              : tab === "benefit"
+              ? "효능 사전 📖"
+              : "알림 설정 🔔"}
           </div>
 
           {/* 사용자 전환 */}
@@ -345,6 +367,7 @@ function SmoothieDaily() {
                 <StatsScreen weekly={weekly} records={records} />
               )}
               {tab === "benefit" && <BenefitScreen />}
+              {tab === "reminder" && <ReminderScreen />}
             </React.Fragment>
           )}
         </div>
@@ -356,6 +379,7 @@ function SmoothieDaily() {
             { id: "garden", icon: "🌱", label: "잔디밭" },
             { id: "stats", icon: "📊", label: "통계" },
             { id: "benefit", icon: "📖", label: "효능" },
+            { id: "reminder", icon: "🔔", label: "알림" },
           ].map((t) => (
             <button
               key={t.id}
@@ -612,6 +636,62 @@ function IOSInstallBanner() {
       </div>
       <div className="smd-arrow" style={S.iosBannerArrow}>
         ⬇︎
+      </div>
+    </div>
+  );
+}
+
+// ========================================================================
+//  화면 E — 알림 (구글 캘린더 리마인더 등록)
+// ========================================================================
+function ReminderScreen() {
+  const appUrl = "https://ayaan-home.github.io/smoothie-daily/";
+  const detail = "스무디 데일리에서 오늘의 스무디를 기록하세요! " + appUrl;
+  const morningUrl = calendarUrl("🥤 아침 스무디 마시기", 8, detail);
+  const eveningUrl = calendarUrl("🥤 저녁 스무디 마시기", 19, detail);
+
+  return (
+    <div>
+      <div style={S.benefitIntro}>
+        🔔 구글 캘린더에 매일 스무디 알림을 등록하세요
+      </div>
+      <div style={S.remindStep}>
+        아래 버튼을 누르면 구글 캘린더가 열려요. 일정이 미리 채워져 있으니
+        <b> '저장'</b>만 누르면 끝! 매일 그 시간에 알림이 옵니다. (시간은 저장
+        화면에서 바꿀 수 있어요)
+      </div>
+
+      <a
+        href={morningUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={S.remindBtnM}
+      >
+        <span style={S.remindBtnEmoji}>☀️</span>
+        <span style={S.remindBtnBody}>
+          <span style={S.remindBtnTitle}>아침 스무디 알림</span>
+          <span style={S.remindBtnSub}>매일 아침 8:00 · 캘린더에 추가</span>
+        </span>
+        <span style={S.remindBtnArrow}>›</span>
+      </a>
+
+      <a
+        href={eveningUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={S.remindBtnE}
+      >
+        <span style={S.remindBtnEmoji}>🌆</span>
+        <span style={S.remindBtnBody}>
+          <span style={S.remindBtnTitle}>저녁 스무디 알림</span>
+          <span style={S.remindBtnSub}>매일 저녁 7:00 · 캘린더에 추가</span>
+        </span>
+        <span style={S.remindBtnArrow}>›</span>
+      </a>
+
+      <div style={S.benefitNote}>
+        ※ 부부가 각자 본인 휴대폰에서 한 번씩 눌러 등록하세요. 한 번만 등록하면
+        매일 자동으로 알림이 옵니다.
       </div>
     </div>
   );
@@ -919,6 +999,46 @@ const S = {
     marginTop: 10,
     lineHeight: 1.5,
   },
+
+  // 알림(캘린더 리마인더) 화면
+  remindStep: {
+    fontSize: 12,
+    color: "#6b5560",
+    lineHeight: 1.65,
+    margin: "0 2px 16px",
+  },
+  remindBtnM: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    textDecoration: "none",
+    background: "linear-gradient(135deg,#ffe9c2,#ffd79a)",
+    border: "1.5px solid #f5a623",
+    borderRadius: 16,
+    padding: "14px 14px",
+    marginBottom: 10,
+  },
+  remindBtnE: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    textDecoration: "none",
+    background: "linear-gradient(135deg,#ffe1ec,#ffc9dd)",
+    border: "1.5px solid #c0306b",
+    borderRadius: 16,
+    padding: "14px 14px",
+    marginBottom: 10,
+  },
+  remindBtnEmoji: { fontSize: 26 },
+  remindBtnBody: { flex: 1, display: "flex", flexDirection: "column" },
+  remindBtnTitle: { fontSize: 15, fontWeight: 800, color: "#7a1340" },
+  remindBtnSub: {
+    fontSize: 11,
+    color: "#6b5560",
+    marginTop: 3,
+    fontWeight: 600,
+  },
+  remindBtnArrow: { fontSize: 22, color: "#c0306b", fontWeight: 800 },
 
   note: {
     marginTop: 20,
