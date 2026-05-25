@@ -431,6 +431,23 @@ function HomeScreen({ todayRecord, selType, setSelType, saveRecord, undoToday })
             </div>
           )}
         </div>
+        {typeInfo && (
+          <div style={S.doneBenefitCard}>
+            <div style={S.doneBenefitHead}>🌿 오늘 스무디의 효능</div>
+            {typeInfo.recipe.map((ing) => {
+              const info = INGREDIENT_INFO.find((x) => x.name === ing);
+              if (!info) return null;
+              return (
+                <div key={ing} style={S.benefitRow}>
+                  <span style={S.benefitEmoji}>{info.emoji}</span>
+                  <span style={S.benefitName}>{info.name}</span>
+                  <span style={S.benefitText}>{info.benefit}</span>
+                </div>
+              );
+            })}
+            <div style={S.doneBenefitNote}>※ 일반 건강 상식 참고용</div>
+          </div>
+        )}
         <button onClick={undoToday} style={S.undoBtn}>
           기록 취소하고 다시 선택
         </button>
@@ -882,6 +899,25 @@ const S = {
     marginTop: 6,
   },
   doneSub: { fontSize: 15, color: "#6b5560", margin: "6px 0 12px" },
+  doneBenefitCard: {
+    background: "#fffdf9",
+    border: "1px solid #f0e3d0",
+    borderRadius: 16,
+    padding: "12px 16px 10px",
+    marginTop: 12,
+  },
+  doneBenefitHead: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#c0306b",
+    marginBottom: 4,
+  },
+  doneBenefitNote: {
+    fontSize: 10,
+    color: "#b0a09a",
+    marginTop: 8,
+    textAlign: "right",
+  },
   undoBtn: {
     width: "100%",
     marginTop: 14,
