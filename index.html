@@ -2,31 +2,71 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#c0306b">
+<meta name="description" content="부부가 함께 쓰는 스무디 섭취 기록 앱">
 <title>스무디 데일리 🥤</title>
+
+<!-- ===== PWA (홈 화면에 추가 → 앱처럼 사용) ===== -->
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="스무디 데일리">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<!-- ===== Firebase SDK (데이터 영구 저장 · 부부 실시간 공유) ===== -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
 <style>
   html,body{margin:0;padding:0;background:#fdf6ec;}
   #root{min-height:100vh;}
+  @keyframes smd-bounce { 0%,100%{transform:translateY(0);} 50%{transform:translateY(6px);} }
+  @keyframes smd-spin { to { transform:rotate(360deg); } }
+  .smd-arrow{ animation:smd-bounce 1.2s ease-in-out infinite; }
+  .smd-spinner{
+    width:34px;height:34px;border-radius:50%;
+    border:4px solid #f0e3d0;border-top-color:#c0306b;
+    animation:smd-spin .8s linear infinite;
+  }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
-const { useState, useMemo } = React;
-
-
+const { useState, useMemo, useEffect } = React;
 
 /* ========================================================================
-   스무디 데일리 — 웹앱 프로토타입
-   부부 2명용 스무디 섭취 습관 트래커 (모바일 우선)
-   ※ 프로토타입: 데이터는 메모리에만 저장됩니다 (새로고침 시 초기화)
+   스무디 데일리 — 부부 2명용 스무디 섭취 습관 트래커 (모바일 우선)
+   ※ 데이터는 Firebase(Firestore)에 영구 저장되며 부부가 실시간 공유합니다.
+   ※ 홈 화면에 추가하면 앱처럼 전체화면으로 사용할 수 있습니다 (PWA).
    ======================================================================== */
+
+// ---- Firebase 초기화 -------------------------------------------------------
+const firebaseConfig = {
+  apiKey: "AIzaSyDZwS9eurDcjfWIDInZGlV46pBVl3cplMU",
+  authDomain: "smoothie-daily.firebaseapp.com",
+  projectId: "smoothie-daily",
+  storageBucket: "smoothie-daily.firebasestorage.app",
+  messagingSenderId: "356022033099",
+  appId: "1:356022033099:web:328bc341ec5e32bedf994e",
+};
+
+let db = null;
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+} catch (e) {
+  console.error("Firebase 초기화 실패:", e);
+}
 
 // ---- 상수 데이터 ------------------------------------------------------------
 const USERS = [
@@ -90,28 +130,15 @@ const INGREDIENT_INFO = [
   { name: "파인애플", emoji: "🍍", benefit: "소화 효소 · 비타민C" },
 ];
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
-const dateStr = (d) => d.toISOString().slice(0, 10);
-
-// 시작용 더미 기록 (지난 며칠치) — 프로토타입 체험용
-function seedRecords() {
-  const recs = [];
-  const mk = (uid, daysAgo, type, tags) => {
-    const d = new Date();
-    d.setDate(d.getDate() - daysAgo);
-    recs.push({ id: `${uid}-${daysAgo}`, userId: uid, date: dateStr(d), type, tags });
-  };
-  // 민지: 최근 4일 연속
-  mk("minji", 1, "dawn", ["인삼", "더덕", "마", "우유", "꿀", "배"]);
-  mk("minji", 2, "morningA", ["당근", "비트", "연근", "우엉", "요거트"]);
-  mk("minji", 3, "evening", ["검은콩", "검은깨", "치아시드", "두유"]);
-  mk("minji", 5, "morningB", ["사과", "양배추", "레몬", "생강", "요거트"]);
-  // 준호: 최근 2일 연속
-  mk("junho", 1, "evening", ["검은콩", "아마씨드", "두유"]);
-  mk("junho", 2, "dawn", ["인삼", "마", "우유", "배"]);
-  mk("junho", 4, "morningA", ["당근", "비트", "연근", "우엉", "요거트"]);
-  return recs;
+// 로컬(기기) 시간 기준 날짜 YYYY-MM-DD — 한국 시간대 반영
+function localDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return y + "-" + m + "-" + day;
 }
+const todayStr = () => localDate(new Date());
+const dateStr = (d) => localDate(d);
 
 // ---- 스트릭 계산 -------------------------------------------------------------
 function calcStreak(records, userId) {
@@ -165,12 +192,38 @@ function calcGrass(records, userId) {
 //  메인 컴포넌트
 // ========================================================================
 function SmoothieDaily() {
-  const [records, setRecords] = useState(seedRecords);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState("");
   const [activeUser, setActiveUser] = useState("minji");
-  const [tab, setTab] = useState("home"); // home | garden | stats
+  const [tab, setTab] = useState("home"); // home | garden | stats | benefit
 
   // 기록 입력 폼 상태
   const [selType, setSelType] = useState(null);
+
+  // ---- Firestore 실시간 구독 (부부 양쪽 기록이 실시간 반영) ----
+  useEffect(() => {
+    if (!db) {
+      setDbError("데이터베이스에 연결하지 못했어요. 잠시 후 새로고침해 주세요.");
+      setLoading(false);
+      return;
+    }
+    const unsub = db.collection("records").onSnapshot(
+      (snap) => {
+        const list = [];
+        snap.forEach((doc) => list.push(Object.assign({ id: doc.id }, doc.data())));
+        setRecords(list);
+        setDbError("");
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Firestore 구독 오류:", err);
+        setDbError("기록을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.");
+        setLoading(false);
+      }
+    );
+    return () => unsub();
+  }, []);
 
   const today = todayStr();
   const user = USERS.find((u) => u.id === activeUser);
@@ -191,28 +244,36 @@ function SmoothieDaily() {
     [records, activeUser]
   );
 
-  // ---- 기록 저장 (선택한 스무디의 레시피를 자동 저장) ----
+  // ---- 기록 저장 (선택한 스무디의 레시피를 자동 저장 · Firestore) ----
   const saveRecord = () => {
-    if (!selType) return;
+    if (!selType || !db) return;
     const info = SMOOTHIE_TYPES.find((t) => t.id === selType);
-    const newRec = {
-      id: `${activeUser}-${today}-${Date.now()}`,
-      userId: activeUser,
-      date: today,
-      type: selType,
-      tags: info ? info.recipe : [],
-    };
-    setRecords((prev) => [
-      ...prev.filter((r) => !(r.userId === activeUser && r.date === today)),
-      newRec,
-    ]);
+    const docId = activeUser + "_" + today; // 하루 1잔 — 같은 날 다시 저장 시 덮어쓰기
+    db.collection("records")
+      .doc(docId)
+      .set({
+        userId: activeUser,
+        date: today,
+        type: selType,
+        tags: info ? info.recipe : [],
+        ts: Date.now(),
+      })
+      .catch((err) => {
+        console.error("저장 오류:", err);
+        setDbError("저장에 실패했어요. 인터넷 연결을 확인해 주세요.");
+      });
     setSelType(null);
   };
 
   const undoToday = () => {
-    setRecords((prev) =>
-      prev.filter((r) => !(r.userId === activeUser && r.date === today))
-    );
+    if (!db) return;
+    db.collection("records")
+      .doc(activeUser + "_" + today)
+      .delete()
+      .catch((err) => {
+        console.error("취소 오류:", err);
+        setDbError("취소에 실패했어요. 인터넷 연결을 확인해 주세요.");
+      });
   };
 
   // ====================================================================
@@ -225,7 +286,7 @@ function SmoothieDaily() {
             {tab === "home"
               ? "좋은 아침이에요"
               : tab === "garden"
-              ? `${user.name}님의 기록`
+              ? user.name + "님의 기록"
               : tab === "stats"
               ? "우리 부부의"
               : "스무디 재료별"}
@@ -246,10 +307,11 @@ function SmoothieDaily() {
               <button
                 key={u.id}
                 onClick={() => setActiveUser(u.id)}
-                style={{
-                  ...S.userChip,
-                  ...(u.id === activeUser ? S.userChipOn : {}),
-                }}
+                style={Object.assign(
+                  {},
+                  S.userChip,
+                  u.id === activeUser ? S.userChipOn : {}
+                )}
               >
                 {u.avatar} {u.name}
               </button>
@@ -259,20 +321,32 @@ function SmoothieDaily() {
 
         {/* ---- 본문 ---- */}
         <div style={S.body}>
-          {tab === "home" && (
-            <HomeScreen
-              todayRecord={todayRecord}
-              selType={selType}
-              setSelType={setSelType}
-              saveRecord={saveRecord}
-              undoToday={undoToday}
-            />
+          {loading ? (
+            <div style={S.loadingBox}>
+              <div className="smd-spinner"></div>
+              <div style={S.loadingText}>기록을 불러오는 중...</div>
+            </div>
+          ) : (
+            <React.Fragment>
+              {dbError ? <div style={S.errorBar}>⚠️ {dbError}</div> : null}
+              {tab === "home" && (
+                <HomeScreen
+                  todayRecord={todayRecord}
+                  selType={selType}
+                  setSelType={setSelType}
+                  saveRecord={saveRecord}
+                  undoToday={undoToday}
+                />
+              )}
+              {tab === "garden" && (
+                <GardenScreen streak={streak} grass={grass} />
+              )}
+              {tab === "stats" && (
+                <StatsScreen weekly={weekly} records={records} />
+              )}
+              {tab === "benefit" && <BenefitScreen />}
+            </React.Fragment>
           )}
-          {tab === "garden" && <GardenScreen streak={streak} grass={grass} />}
-          {tab === "stats" && (
-            <StatsScreen weekly={weekly} records={records} />
-          )}
-          {tab === "benefit" && <BenefitScreen />}
         </div>
 
         {/* ---- 하단 탭 ---- */}
@@ -286,10 +360,11 @@ function SmoothieDaily() {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              style={{
-                ...S.tabBtn,
-                ...(tab === t.id ? S.tabBtnOn : {}),
-              }}
+              style={Object.assign(
+                {},
+                S.tabBtn,
+                tab === t.id ? S.tabBtnOn : {}
+              )}
             >
               <div style={{ fontSize: 20 }}>{t.icon}</div>
               <div style={{ fontSize: 11, fontWeight: 700 }}>{t.label}</div>
@@ -299,9 +374,10 @@ function SmoothieDaily() {
       </div>
 
       <p style={S.note}>
-        🥤 스무디 데일리 · 프로토타입 — 데이터는 메모리에만 저장됩니다
-        (새로고침 시 초기화)
+        🥤 스무디 데일리 · 부부가 함께 쓰는 스무디 기록 · 기록은 자동 저장돼요
       </p>
+
+      <IOSInstallBanner />
     </div>
   );
 }
@@ -309,13 +385,7 @@ function SmoothieDaily() {
 // ========================================================================
 //  화면 A — 기록하기
 // ========================================================================
-function HomeScreen({
-  todayRecord,
-  selType,
-  setSelType,
-  saveRecord,
-  undoToday,
-}) {
+function HomeScreen({ todayRecord, selType, setSelType, saveRecord, undoToday }) {
   // 이미 오늘 기록이 있으면 완료 화면
   if (todayRecord) {
     const typeInfo = SMOOTHIE_TYPES.find((t) => t.id === todayRecord.type);
@@ -325,7 +395,7 @@ function HomeScreen({
           <div style={{ fontSize: 44 }}>🎉</div>
           <div style={S.doneTitle}>오늘 기록 완료!</div>
           <div style={S.doneSub}>
-            {typeInfo?.emoji} {typeInfo?.label} 스무디
+            {typeInfo ? typeInfo.emoji : ""} {typeInfo ? typeInfo.label : ""} 스무디
           </div>
           {typeInfo && (
             <div style={S.tagWrap}>
@@ -364,10 +434,11 @@ function HomeScreen({
           <button
             key={t.id}
             onClick={() => setSelType(t.id)}
-            style={{
-              ...S.smoothieCard,
-              ...(selType === t.id ? S.smoothieCardOn : {}),
-            }}
+            style={Object.assign(
+              {},
+              S.smoothieCard,
+              selType === t.id ? S.smoothieCardOn : {}
+            )}
           >
             <div style={S.smoothieCardTop}>
               <span style={{ fontSize: 22 }}>{t.emoji}</span>
@@ -382,13 +453,10 @@ function HomeScreen({
       <button
         onClick={saveRecord}
         disabled={!selType}
-        style={{
-          ...S.saveBtn,
-          ...(!selType ? S.saveBtnOff : {}),
-        }}
+        style={Object.assign({}, S.saveBtn, !selType ? S.saveBtnOff : {})}
       >
         {selInfo
-          ? `✓ ${selInfo.label} 스무디 기록하기`
+          ? "✓ " + selInfo.label + " 스무디 기록하기"
           : "스무디를 골라주세요"}
       </button>
     </div>
@@ -413,19 +481,16 @@ function GardenScreen({ streak, grass }) {
           <div
             key={c.date}
             title={c.date}
-            style={{
-              ...S.cell,
+            style={Object.assign({}, S.cell, {
               background: c.filled ? "#3f7d4e" : "#f0e3d0",
-            }}
+            })}
           />
         ))}
       </div>
       <div style={S.legend}>
-        <span style={{ ...S.cell, ...S.legendCell, background: "#f0e3d0" }} />
+        <span style={Object.assign({}, S.cell, S.legendCell, { background: "#f0e3d0" })} />
         <span style={{ fontSize: 11, color: "#6b5560" }}>안 마심</span>
-        <span
-          style={{ ...S.cell, ...S.legendCell, background: "#3f7d4e" }}
-        />
+        <span style={Object.assign({}, S.cell, S.legendCell, { background: "#3f7d4e" })} />
         <span style={{ fontSize: 11, color: "#6b5560" }}>마심</span>
       </div>
     </div>
@@ -443,7 +508,7 @@ function StatsScreen({ weekly, records }) {
         <div key={i} style={S.barRow}>
           <span style={S.barWk}>{i + 1}주</span>
           <div style={S.barTrack}>
-            <div style={{ ...S.barFill, width: `${pct}%` }} />
+            <div style={Object.assign({}, S.barFill, { width: pct + "%" })} />
           </div>
           <span style={S.barPct}>{pct}%</span>
         </div>
@@ -500,6 +565,58 @@ function BenefitScreen() {
     </div>
   );
 }
+
+// ========================================================================
+//  아이폰 "홈 화면에 추가" 안내 배너
+//  - 아이폰 사파리에서, 아직 홈 화면 앱으로 안 쓰고 있을 때만 표시
+//  - 한 번 닫으면 다시 표시하지 않음 (기기에 기억)
+// ========================================================================
+function IOSInstallBanner() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    try {
+      const ua = window.navigator.userAgent || "";
+      const isIOS = /iphone|ipad|ipod/i.test(ua);
+      const isStandalone =
+        window.navigator.standalone === true ||
+        (window.matchMedia &&
+          window.matchMedia("(display-mode: standalone)").matches);
+      let dismissed = false;
+      try {
+        dismissed = window.localStorage.getItem("smd_ios_banner") === "off";
+      } catch (e) {}
+      if (isIOS && !isStandalone && !dismissed) setShow(true);
+    } catch (e) {}
+  }, []);
+
+  const close = () => {
+    setShow(false);
+    try {
+      window.localStorage.setItem("smd_ios_banner", "off");
+    } catch (e) {}
+  };
+
+  if (!show) return null;
+
+  return (
+    <div style={S.iosBanner}>
+      <button onClick={close} style={S.iosBannerClose} aria-label="닫기">
+        ✕
+      </button>
+      <div style={S.iosBannerTitle}>📲 홈 화면에 추가하면 더 편해요</div>
+      <div style={S.iosBannerText}>
+        사파리 아래쪽의 <b>공유 버튼</b>(네모에 화살표 ⬆️ 모양)을 누른 뒤,
+        <b> '홈 화면에 추가'</b>를 선택하세요. 진짜 앱처럼 아이콘으로 열 수
+        있어요!
+      </div>
+      <div className="smd-arrow" style={S.iosBannerArrow}>
+        ⬇︎
+      </div>
+    </div>
+  );
+}
+
 const S = {
   app: {
     minHeight: "100vh",
@@ -512,8 +629,7 @@ const S = {
       "radial-gradient(circle at 15% 10%, rgba(245,166,35,.18), transparent 40%)," +
       "radial-gradient(circle at 85% 8%, rgba(192,48,107,.16), transparent 42%)," +
       "#fdf6ec",
-    fontFamily:
-      "'IBM Plex Sans KR','Apple SD Gothic Neo',sans-serif",
+    fontFamily: "'IBM Plex Sans KR','Apple SD Gothic Neo',sans-serif",
   },
   phone: {
     width: 340,
@@ -565,6 +681,28 @@ const S = {
   },
   tabBtnOn: { color: "#c0306b" },
 
+  // 로딩 / 오류
+  loadingBox: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 384,
+    gap: 14,
+  },
+  loadingText: { fontSize: 13, color: "#6b5560", fontWeight: 700 },
+  errorBar: {
+    background: "#fbe6ee",
+    color: "#7a1340",
+    fontSize: 12,
+    fontWeight: 700,
+    borderRadius: 10,
+    padding: "9px 12px",
+    marginBottom: 12,
+    textAlign: "center",
+    lineHeight: 1.5,
+  },
+
   // 기록 화면
   bigCheck: {
     background: "#fffdf9",
@@ -580,7 +718,6 @@ const S = {
     color: "#6b5560",
     margin: "16px 0 8px",
   },
-  // 스무디 선택 리스트 (재료 이름 함께 표시)
   smoothieList: { display: "flex", flexDirection: "column", gap: 8 },
   smoothieCard: {
     border: "1.5px solid #f0e3d0",
@@ -790,8 +927,51 @@ const S = {
     textAlign: "center",
     maxWidth: 340,
   },
-};
 
+  // 아이폰 설치 안내 배너
+  iosBanner: {
+    position: "fixed",
+    left: 12,
+    right: 12,
+    bottom: 14,
+    maxWidth: 360,
+    margin: "0 auto",
+    background: "#1d1320",
+    color: "#fff",
+    borderRadius: 16,
+    padding: "14px 16px 12px",
+    boxShadow: "0 14px 36px rgba(0,0,0,.4)",
+    zIndex: 999,
+  },
+  iosBannerClose: {
+    position: "absolute",
+    top: 6,
+    right: 8,
+    background: "none",
+    border: "none",
+    color: "rgba(255,255,255,.55)",
+    fontSize: 15,
+    cursor: "pointer",
+    padding: 4,
+  },
+  iosBannerTitle: {
+    fontSize: 14,
+    fontWeight: 800,
+    marginBottom: 5,
+    paddingRight: 18,
+  },
+  iosBannerText: {
+    fontSize: 12,
+    lineHeight: 1.65,
+    color: "rgba(255,255,255,.86)",
+  },
+  iosBannerArrow: {
+    textAlign: "center",
+    fontSize: 22,
+    marginTop: 4,
+    color: "#f5a623",
+  },
+};
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<SmoothieDaily />);
